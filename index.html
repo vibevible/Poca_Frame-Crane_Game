@@ -6,6 +6,12 @@
     <title>AR 카메라 포카 프레임 캡슐뽑기</title>
     <style>
         body { 
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100dvh;
+            box-sizing: border-box;
             text-align: center; 
             background: #1a1a1a; 
             color: #fff; 
@@ -385,16 +391,16 @@
             top: 0;
             left: 0;
             width: 100%;
-            height: 100%;
+            height: 100dvh;
             background: #121212;
             display: none;
             flex-direction: column;
             align-items: center;
             justify-content: center;
+            overflow-y: auto;
             z-index: 9999;
-            padding: 15px;
+            padding: 20px 15px;
             box-sizing: border-box;
-            overflow-y: auto; justify-content: flex-start; padding-top: 25px;
         }
         #poca-studio-overlay.show {
             display: flex;
@@ -783,10 +789,11 @@
 
     <!-- 2단계 모달: 나만의 포카 만들기 스튜디오 -->
     <div id="poca-studio-overlay">
-        <div class="studio-header">
-            <span class="studio-title" id="studio-frame-title">✨ 나만의 포카 만들기</span>
-            <button class="studio-close-x" onclick="closePocaStudio()">✕</button>
-        </div>
+        <div class="studio-inner" style="margin: auto; display: flex; flex-direction: column; align-items: center;">
+            <div class="studio-header">
+                <span class="studio-title" id="studio-frame-title">✨ 나만의 포카 만들기</span>
+                <button class="studio-close-x" onclick="closePocaStudio()">✕</button>
+            </div>
 
         <div id="poca-preview-box">
             <div id="studio-media-wrapper">
@@ -812,6 +819,7 @@
             <button class="studio-btn upload" onclick="document.getElementById('photo-file-input').click()">🖼️ 앨범 사진 첨부</button>
             <button class="studio-btn save" id="save-poca-btn" onclick="downloadPocaImage()">💾 포카 저장</button>
             <input type="file" id="photo-file-input" accept="image/*" style="display:none;" onchange="handleFileUpload(event)">
+        </div>
         </div>
     </div>
 
@@ -1188,8 +1196,10 @@
             if (!track || !framePool.length) return;
 
             track.innerHTML = '';
-            // 끊김 없는 무한 루프를 위해 동일한 프레임 배열을 2번 이어 붙임
             const loopItems = [...framePool, ...framePool];
+
+            // 프레임 개수에 비례해 애니메이션 시간 자동 계산 (개당 3.5초)
+            track.style.animationDuration = `${framePool.length * 3.5}s`;
 
             loopItems.forEach((frame) => {
                 const img = document.createElement('img');
