@@ -442,6 +442,22 @@
             filter: none;
             z-index: 1;
         }
+        /* 촬영 창 내부 사진 영역 (동적 프레임 외곽선 마스크 적용) */
+        #studio-media-wrapper {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 14px;
+            overflow: hidden;
+            -webkit-mask-size: 120% 118%;
+            mask-size: 120% 118%;
+            -webkit-mask-position: center center;
+            mask-position: center center;
+            -webkit-mask-repeat: no-repeat;
+            mask-repeat: no-repeat;
+        }
         /* 촬영된 사진 또는 업로드한 이미지 (드래그/확대 가능) */
         #studio-user-photo {
             position: absolute;
@@ -459,10 +475,10 @@
         /* 최상단 포카 프레임 이미지 (클릭/드래그 투과) */
         #studio-frame-img {
             position: absolute;
-            top: -6%;
-            left: -7%;
-            width: 114%;
-            height: 112%;
+            top: -9%;
+            left: -10%;
+            width: 120%;
+            height: 118%;
             object-fit: fill;
             pointer-events: none;
             z-index: 3;
@@ -903,7 +919,7 @@
         }
 
         // ========================================================
-        // 캡슐 개봉 & 첨부하신 포카 프레임 3종 매칭
+        // 캡슐 개봉 & 포카 프레임 매칭
         // ========================================================
         const revealOverlay = document.getElementById('capsule-reveal-overlay');
         const bigCapsuleBox = document.getElementById('big-capsule-box');
@@ -912,18 +928,14 @@
         const revealText = document.getElementById('reveal-text');
         const revealBtnGroup = document.getElementById('reveal-btn-group');
 
-        // 포카 프레임 이미지 목록
+        // 웹 표준 슬래시(/) 경로 사용
         const framePool = [
-            { name: '다크 고딕 프레임', src: 'images\\frame.png' },
-            { name: '로리타 리본 프레임', src: 'images\\frame1.png' },
-            { name: '폭신폭신 곰돌이 퍼 프레임', src: 'images\\frame2.png' },
-            { name: '몽환 나비 프레임', src: 'images\\frame3.png' },
-            { name: '천사 프레임', src: 'images\\frame4.png' },
-            { name: '퐁실 하늘 구름 프레임', src: 'images\\frame5.png' },
-            // { name: '별빛 프레임', src: 'images\\frame6.png' },
-            // { name: '레트로 필름 프레임', src: 'images\\frame7.png' },
-            // { name: '화려한 꽃 프레임', src: 'images\\frame8.png' },
-            // { name: '심플 모던 프레임', src: 'images\\frame9.png' }
+            { name: '다크 고딕 프레임', src: 'images/frame.png' },
+            { name: '로리타 리본 프레임', src: 'images/frame1.png' },
+            { name: '폭신폭신 곰돌이 퍼 프레임', src: 'images/frame2.png' },
+            { name: '몽환 나비 프레임', src: 'images/frame3.png' },
+            { name: '천사 프레임', src: 'images/frame4.png' },
+            { name: '퐁실 하늘 구름 프레임', src: 'images/frame5.png' }
         ];
 
         let currentWonFrame = framePool[0];
@@ -933,7 +945,6 @@
             bigCapsuleBox.classList.remove('shaking', 'opened');
             revealBtnGroup.classList.remove('visible');
 
-            // 포카 프레임 중 랜덤 선택
             currentWonFrame = framePool[Math.floor(Math.random() * framePool.length)];
             revealFramePreview.src = currentWonFrame.src;
             revealText.innerText = currentWonFrame.name;
@@ -977,7 +988,6 @@
         const savePocaBtn = document.getElementById('save-poca-btn');
         const previewBox = document.getElementById('poca-preview-box');
 
-        // 사진 이동/확대 상태 변수
         let photoOffsetX = 0;
         let photoOffsetY = 0;
         let photoScale = 1;
@@ -985,20 +995,105 @@
         let dragStartX = 0;
         let dragStartY = 0;
 
+        let dynamicMaskCanvas = null;
+
+        // 프레임 이미지를 분석해 '바깥쪽 투명 여백'을 제외한 동적 마스크 생성
+        function buildDynamicFrameMask(imgElement) {
+            const w = imgElement.naturalWidth;
+            const h = imgElement.naturalHeight;
+            if (!w || !h) return null;
+
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(imgElement, 0, 0, w, h);
+
+            const imgData = ctx.getImageData(0, 0, w, h);
+            const data = imgData.data;
+
+            const outside = new Uint8Array(w * h);
+            const stack = [];
+
+            const isTransparent = (idx) => data[idx * 4 + 3] < 30;
+
+            for (let x = 0; x < w; x++) {
+                if (isTransparent(x)) { outside[x] = 1; stack.push(x); }
+                const bottomIdx = (h - 1) * w + x;
+                if (isTransparent(bottomIdx)) { outside[bottomIdx] = 1; stack.push(bottomIdx); }
+            }
+            for (let y = 0; y < h; y++) {
+                const leftIdx = y * w;
+                if (isTransparent(leftIdx)) { outside[leftIdx] = 1; stack.push(leftIdx); }
+                const rightIdx = y * w + (w - 1);
+                if (isTransparent(rightIdx)) { outside[rightIdx] = 1; stack.push(rightIdx); }
+            }
+
+            while (stack.length > 0) {
+                const curr = stack.pop();
+                const cx = curr % w;
+                const cy = (curr - cx) / w;
+
+                if (cx > 0) {
+                    const left = curr - 1;
+                    if (!outside[left] && isTransparent(left)) { outside[left] = 1; stack.push(left); }
+                }
+                if (cx < w - 1) {
+                    const right = curr + 1;
+                    if (!outside[right] && isTransparent(right)) { outside[right] = 1; stack.push(right); }
+                }
+                if (cy > 0) {
+                    const up = curr - w;
+                    if (!outside[up] && isTransparent(up)) { outside[up] = 1; stack.push(up); }
+                }
+                if (cy < h - 1) {
+                    const down = curr + w;
+                    if (!outside[down] && isTransparent(down)) { outside[down] = 1; stack.push(down); }
+                }
+            }
+
+            for (let i = 0; i < w * h; i++) {
+                const alpha = outside[i] === 1 ? 0 : 255;
+                data[i * 4] = 0;
+                data[i * 4 + 1] = 0;
+                data[i * 4 + 2] = 0;
+                data[i * 4 + 3] = alpha;
+            }
+
+            ctx.putImageData(imgData, 0, 0);
+            return canvas;
+        }
+
         async function openPocaStudio() {
-            // 1단계 개봉 모달 닫기
             revealOverlay.classList.remove('show');
             revealOverlay.style.display = 'none';
 
-            // 스튜디오에 획득한 프레임 세팅
+            const mediaWrapper = document.getElementById('studio-media-wrapper');
+            mediaWrapper.style.webkitMaskImage = 'none';
+            mediaWrapper.style.maskImage = 'none';
+            dynamicMaskCanvas = null;
+
             studioFrameTitle.innerText = `✨ ${currentWonFrame.name}`;
+            
+            // crossOrigin 속성을 제거하여 로컬 이미지 로드가 차단되지 않도록 수정
+            studioFrameImg.removeAttribute('crossorigin');
+            studioFrameImg.onload = () => {
+                try {
+                    dynamicMaskCanvas = buildDynamicFrameMask(studioFrameImg);
+                    if (dynamicMaskCanvas) {
+                        const maskUrl = `url(${dynamicMaskCanvas.toDataURL('image/png')})`;
+                        mediaWrapper.style.webkitMaskImage = maskUrl;
+                        mediaWrapper.style.maskImage = maskUrl;
+                    }
+                } catch (err) {
+                    console.warn('동적 마스크 생성 건너뜀 (로컬 파일 보안 제한):', err);
+                }
+            };
             studioFrameImg.src = currentWonFrame.src;
 
-            // 카메라 모드 초기화
             resetToCameraMode();
             pocaStudioOverlay.classList.add('show');
 
-            // 카메라 스트림 연결
             if (activeCameraStream) {
                 studioVideo.srcObject = activeCameraStream;
             } else {
@@ -1015,7 +1110,6 @@
             returnClawToCenter();
         }
 
-        // 실시간 카메라 촬영 모드로 전환
         function resetToCameraMode() {
             studioVideo.style.display = 'block';
             studioUserPhoto.style.display = 'none';
@@ -1025,10 +1119,8 @@
             savePocaBtn.style.display = 'none';
         }
 
-        // 사진 편집 모드로 전환 (촬영 직후 또는 앨범 업로드 직후)
         function enterPhotoEditMode(imgSrc) {
             studioUserPhoto.onload = () => {
-                // 330x510 박스에 알맞게 초기 배율 자동 계산
                 const scaleW = BOARD_WIDTH / studioUserPhoto.naturalWidth;
                 const scaleH = BOARD_HEIGHT / studioUserPhoto.naturalHeight;
                 photoScale = Math.max(scaleW, scaleH);
@@ -1050,18 +1142,16 @@
             savePocaBtn.style.display = 'inline-block';
         }
 
-        // [기능 1] 실시간 전면 카메라로 찰칵 촬영 (거울 모드 반전 반영)
         function takeSnapshot() {
             if (!studioVideo.srcObject) {
                 alert('카메라가 켜져 있지 않습니다. 상단의 [카메라 켜기]를 먼저 허용하거나 [앨범 사진 첨부]를 이용해 주세요.');
                 return;
             }
             const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = BOARD_WIDTH * 2;  // 고해상도 660x1020
+            tempCanvas.width = BOARD_WIDTH * 2;
             tempCanvas.height = BOARD_HEIGHT * 2;
             const ctx = tempCanvas.getContext('2d');
 
-            // 비디오 비율에 맞춰 중앙 크롭(object-fit: cover) + 거울 좌우 반전
             const vw = studioVideo.videoWidth;
             const vh = studioVideo.videoHeight;
             const targetRatio = tempCanvas.width / tempCanvas.height;
@@ -1083,7 +1173,6 @@
             enterPhotoEditMode(tempCanvas.toDataURL('image/png'));
         }
 
-        // [기능 2] 기기 앨범에서 이미지 첨부
         function handleFileUpload(event) {
             const file = event.target.files[0];
             if (!file) return;
@@ -1092,10 +1181,9 @@
                 enterPhotoEditMode(e.target.result);
             };
             reader.readAsDataURL(file);
-            event.target.value = ''; // 같은 파일 재선택 가능하도록 초기화
+            event.target.value = '';
         }
 
-        // 사진 위치 및 배율 적용
         function updateUserPhotoTransform() {
             studioUserPhoto.style.transform = `translate(calc(-50% + ${photoOffsetX}px), calc(-50% + ${photoOffsetY}px)) scale(${photoScale})`;
         }
@@ -1105,7 +1193,6 @@
             updateUserPhotoTransform();
         });
 
-        // 사진 드래그 이동 (마우스 & 터치 지원)
         function startPhotoDrag(clientX, clientY) {
             if (studioUserPhoto.style.display === 'none') return;
             isPhotoDragging = true;
@@ -1134,12 +1221,11 @@
         });
         window.addEventListener('touchend', endPhotoDrag);
 
-        // [기능 3] 완성된 포토카드 PNG 파일로 합성 및 다운로드
         function downloadPocaImage() {
             const outCanvas = document.createElement('canvas');
             const scaleFactor = 2; // 고화질 출력 배율
-            const padX = Math.round(BOARD_WIDTH * 0.07 * scaleFactor); // 좌우 7% 여백
-            const padY = Math.round(BOARD_HEIGHT * 0.06 * scaleFactor); // 상하 6% 여백
+            const padX = Math.round(BOARD_WIDTH * 0.10 * scaleFactor); // 프레임이 사진보다 좌우 10%씩 더 큼
+            const padY = Math.round(BOARD_HEIGHT * 0.09 * scaleFactor); // 프레임이 사진보다 상하 9%씩 더 큼
 
             const photoAreaW = BOARD_WIDTH * scaleFactor;
             const photoAreaH = BOARD_HEIGHT * scaleFactor;
@@ -1148,14 +1234,10 @@
             outCanvas.height = photoAreaH + padY * 2;
             const ctx = outCanvas.getContext('2d');
 
-            // 1. 찍는 창(330x510 비율) 영역에만 사용자 사진 클리핑해서 그리기
+            // 1. 중앙의 사진 창(330x510 비율) 영역에만 사용자 사진 그리기
             ctx.save();
             ctx.beginPath();
-            if (ctx.roundRect) {
-                ctx.roundRect(padX, padY, photoAreaW, photoAreaH, 14 * scaleFactor);
-            } else {
-                ctx.rect(padX, padY, photoAreaW, photoAreaH);
-            }
+            ctx.roundRect(padX, padY, photoAreaW, photoAreaH, 14 * scaleFactor);
             ctx.clip();
 
             ctx.fillStyle = '#ffffff';
@@ -1168,27 +1250,22 @@
             ctx.drawImage(studioUserPhoto, drawX, drawY, drawW, drawH);
             ctx.restore();
 
-            // 2. 이미 화면에 로드된 프레임 이미지(studioFrameImg)를 그대로 덮어씌우기
-            ctx.drawImage(studioFrameImg, 0, 0, outCanvas.width, outCanvas.height);
+            // 2. 동적 마스크로 프레임 외곽선 바깥으로 삐져나온 모서리 자르기
+            if (dynamicMaskCanvas) {
+                ctx.globalCompositeOperation = 'destination-in';
+                ctx.drawImage(dynamicMaskCanvas, 0, 0, outCanvas.width, outCanvas.height);
+                ctx.globalCompositeOperation = 'source-over';
+            }
 
-            // 3. Blob 방식으로 안전하게 파일 다운로드 실행
+            // 3. 사진 영역보다 훨씬 큰 포카 프레임 이미지를 전체 캔버스에 덮어씌우기
+            ctx.drawImage(studioFrameImg, 0, 0, outCanvas.width, outCanvas.height);
             try {
-                outCanvas.toBlob((blob) => {
-                    if (!blob) {
-                        alert('이미지 생성에 실패했습니다. 로컬 서버(Live Server) 환경에서 실행해 주세요.');
-                        return;
-                    }
-                    const url = URL.createObjectURL(blob);
-                    const link = document.createElement('a');
-                    link.download = `my_photocard_${Date.now()}.png`;
-                    link.href = url;
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-                    setTimeout(() => URL.revokeObjectURL(url), 1000);
-                }, 'image/png');
+                const link = document.createElement('a');
+                link.download = `my_photocard_${Date.now()}.png`;
+                link.href = outCanvas.toDataURL('image/png');
+                link.click();
             } catch (err) {
-                alert('브라우저 로컬 파일 보안(CORS)으로 인해 저장이 차단되었습니다. VS Code Live Server 등 로컬 서버에서 열어주세요!');
+                alert('로컬 파일 보안(CORS)으로 인해 자동 다운로드가 제한되었습니다. VS Code Live Server로 실행하시거나 화면을 캡처해 주세요.');
             }
         }
     </script>
