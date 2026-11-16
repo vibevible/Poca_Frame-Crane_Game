@@ -656,15 +656,67 @@
             color: #fff;
             border: 1px solid rgba(255, 255, 255, 0.25);
         }
+
+        /* =========================================
+        시작 페이지 배경 무한 루프 프레임 트랙
+        ========================================= */
+        .bg-marquee-wrapper {
+            position: absolute;
+            top: 50%;
+            left: 0;
+            width: 100%;
+            transform: translateY(-50%) scale(1.08);
+            overflow: hidden;
+            opacity: 0.4; /* 시작 카드 글씨가 잘 보이도록 은은한 투명도 */
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .bg-marquee-track {
+            display: flex;
+            width: max-content;
+            gap: 22px;
+            animation: scrollFramesLeft 22s linear infinite; /* 숫자를 줄이면 빨라지고 늘리면 느려짐 */
+        }
+
+        .bg-marquee-item {
+            width: 150px;
+            height: 232px; /* 55:85 포카 비율 */
+            transform: rotate(-7deg);
+            object-fit: contain;
+            flex-shrink: 0;
+            filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.6));
+        }
+
+        @keyframes scrollFramesLeft {
+            0% {
+                transform: translateX(0);
+            }
+            100% {
+                /* 동일한 프레임 세트가 2번 반복되므로 정확히 절반(-50%) 이동 시 1번으로 완벽 연결 */
+                transform: translateX(calc(-50% - 11px));
+            }
+        }
+
+        /* 시작 카드가 배경 프레임 트랙 위에 오도록 z-index 지정 */
+        .start-card {
+            position: relative;
+            z-index: 2;
+        }
     </style>
 </head>
 <body>
     <!-- 시작 페이지 오버레이 -->
     <div id="start-screen">
+        <!-- 배경 무한 루프 프레임 영역 -->
+        <div class="bg-marquee-wrapper">
+            <div class="bg-marquee-track" id="bg-marquee-track"></div>
+        </div>
+
         <div class="start-card">
             <div class="floating-capsule-icon"></div>
             <div class="start-badge">55 × 85 PHOTOCARD GACHA</div>
-            <h1 class="start-title">✨포카 프레임✨<br>캡슐뽑기</h1>
+            <h1 class="start-title">포카 프레임<br>캡슐뽑기</h1>
             <p class="start-subtitle">랜덤 포카 프레임을 뽑고<br>나만의 포토카드를 완성해 보세요!</p>
 
             <div class="start-steps">
@@ -1129,6 +1181,26 @@
             { name: '천사 프레임', src: 'images/frame4.png' },
             { name: '퐁실 하늘 구름 프레임', src: 'images/frame5.png' }
         ];
+
+        // 시작 페이지 배경 무한 루프 트랙 초기화 (1 -> 2 -> 3 -> 1...)
+        function initStartBgMarquee() {
+            const track = document.getElementById('bg-marquee-track');
+            if (!track || !framePool.length) return;
+
+            track.innerHTML = '';
+            // 끊김 없는 무한 루프를 위해 동일한 프레임 배열을 2번 이어 붙임
+            const loopItems = [...framePool, ...framePool];
+
+            loopItems.forEach((frame) => {
+                const img = document.createElement('img');
+                img.src = frame.src;
+                img.alt = frame.name;
+                img.className = 'bg-marquee-item';
+                track.appendChild(img);
+            });
+        }
+
+        initStartBgMarquee();
 
         let currentWonFrame = framePool[0];
 
