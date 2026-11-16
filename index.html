@@ -709,6 +709,48 @@
             position: relative;
             z-index: 2;
         }
+
+        /* =========================================
+        3초 카운트다운 및 촬영 플래시 효과
+        ========================================= */
+        #countdown-display {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 84px;
+            font-weight: 900;
+            color: #ffffff;
+            text-shadow: 0 4px 20px rgba(0, 0, 0, 0.75), 0 0 10px rgba(255, 107, 129, 0.8);
+            z-index: 4;
+            pointer-events: none;
+            display: none;
+        }
+
+        @keyframes countPop {
+            0% { transform: translate(-50%, -50%) scale(1.4); opacity: 0; }
+            25% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+            85% { transform: translate(-50%, -50%) scale(0.95); opacity: 1; }
+            100% { transform: translate(-50%, -50%) scale(0.8); opacity: 0; }
+        }
+
+        .count-animate {
+            animation: countPop 0.95s ease-out forwards;
+        }
+
+        /* 찍히는 순간 사진 영역만 하얗게 덮는 플래시 레이어 */
+        #camera-flash-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #ffffff;
+            opacity: 0;
+            pointer-events: none;
+            z-index: 5;
+            transition: opacity 0.35s ease-out;
+        }
     </style>
 </head>
 <body>
@@ -801,6 +843,10 @@
                 <video id="studio-video" autoplay playsinline muted></video>
                 <!-- 촬영 또는 첨부된 사용자 사진 -->
                 <img id="studio-user-photo" src="" alt="내 사진">
+                <!-- 3, 2, 1 카운트다운 숫자 -->
+                <div id="countdown-display">3</div>
+                <!-- 촬영 순간 하얀색 플래시 효과 -->
+                <div id="camera-flash-overlay"></div>
             </div>
             <!-- 찍는 창보다 크게 덮이는 포카 프레임 오버레이 -->
             <img id="studio-frame-img" src="" alt="포카 프레임">
@@ -1382,6 +1428,14 @@
                 initCapsules();
             }
             returnClawToCenter();
+            if (countdownTimer) {
+                clearInterval(countdownTimer);
+                countdownTimer = null;
+            }
+            isCountingDown = false;
+            document.getElementById('countdown-display').style.display = 'none';
+            snapBtn.disabled = false;
+            snapBtn.style.opacity = '1';
         }
 
         function resetToCameraMode() {
@@ -1418,11 +1472,62 @@
             document.querySelector('.studio-controls').style.marginTop = '12px';
         }
 
+        let countdownTimer = null;
+let isCountingDown = false;
+
+        // [기능 1] 3초 카운트다운 후 촬영 실행
         function takeSnapshot() {
             if (!studioVideo.srcObject) {
-                alert('카메라가 켜져 있지 않습니다. 상단의 [카메라 켜기]를 먼저 허용하거나 [앨범 사진 첨부]를 이용해 주세요.');
+                alert('카메라가 켜져 있지 않습니다. 상단의 [카메라 OFF] 버튼을 눌러 켜거나 [앨범 사진 첨부]를 이용해 주세요.');
                 return;
             }
+            if (isCountingDown) return; // 카운트다운 중복 실행 방지
+
+            isCountingDown = true;
+            snapBtn.disabled = true;
+            snapBtn.style.opacity = '0.6';
+
+            const countdownEl = document.getElementById('countdown-display');
+            let count = 3;
+
+            const showNumber = (num) => {
+                countdownEl.innerText = num;
+                countdownEl.style.display = 'block';
+                // 숫자 바뀔 때마다 팝 애니메이션 재시작
+                countdownEl.classList.remove('count-animate');
+                void countdownEl.offsetWidth;
+                countdownEl.classList.add('count-animate');
+            };
+
+            showNumber(count);
+
+            countdownTimer = setInterval(() => {
+                count--;
+                if (count > 0) {
+                    showNumber(count);
+                } else {
+                    clearInterval(countdownTimer);
+                    countdownTimer = null;
+                    countdownEl.style.display = 'none';
+                    isCountingDown = false;
+                    snapBtn.disabled = false;
+                    snapBtn.style.opacity = '1';
+
+                    // 0초 도달 시 플래시와 함께 실제 촬영
+                    captureVideoFrame();
+                }
+            }, 1000);
+        }
+
+        // 실제 프레임 캡처 및 하얀색 플래시 연출
+        function captureVideoFrame() {
+            const flashEl = document.getElementById('camera-flash-overlay');
+
+            // 1. 찍히는 순간 사진 부분을 완전한 하얀색으로 즉시 점등
+            flashEl.style.transition = 'none';
+            flashEl.style.opacity = '1';
+
+            // 2. 비디오 비율에 맞춰 중앙 크롭 + 거울 좌우 반전 캡처
             const tempCanvas = document.createElement('canvas');
             tempCanvas.width = BOARD_WIDTH * 2;
             tempCanvas.height = BOARD_HEIGHT * 2;
@@ -1446,7 +1551,14 @@
             ctx.scale(-1, 1);
             ctx.drawImage(studioVideo, sx, sy, sw, sh, 0, 0, tempCanvas.width, tempCanvas.height);
 
+            // 3. 캡처된 사진을 편집 화면에 반영
             enterPhotoEditMode(tempCanvas.toDataURL('image/png'));
+
+            // 4. 0.12초간 하얀 화면을 유지한 뒤 부드럽게 페이드아웃
+            setTimeout(() => {
+                flashEl.style.transition = 'opacity 0.35s ease-out';
+                flashEl.style.opacity = '0';
+            }, 120);
         }
 
         function handleFileUpload(event) {
