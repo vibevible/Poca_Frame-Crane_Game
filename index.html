@@ -1,0 +1,1196 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AR 카메라 포카 프레임 캡슐뽑기 (55:85 비율)</title>
+    <style>
+        body { 
+            text-align: center; 
+            background: #1a1a1a; 
+            color: #fff; 
+            font-family: sans-serif; 
+            margin: 0; 
+            padding: 15px;
+            user-select: none;
+            touch-action: manipulation;
+        }
+        #status-bar {
+            margin-bottom: 10px;
+            font-size: 15px;
+            color: #f1c40f;
+            font-weight: bold;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+        }
+        #cam-btn {
+            background: #34495e;
+            color: #fff;
+            border: 1px solid #7f8c8d;
+            border-radius: 15px;
+            padding: 4px 10px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+        #cam-btn:active { background: #2c3e50; }
+
+        /* 55:85 비율 게임 판 (330px : 510px = 55 : 85) */
+        #machine {
+            position: relative;
+            width: 330px;
+            height: 510px;
+            background: #dce4ec;
+            border: 4px solid #34495e;
+            margin: 0 auto 15px auto;
+            overflow: hidden;
+            border-radius: 12px;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
+        }
+
+        /* 실시간 카메라 비디오 배경 (거울 모드) */
+        #camera-bg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+            z-index: 0;
+        }
+
+        /* 카메라 위 하얗게 반투명한 유리막 오버레이 */
+        #white-glass-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(229, 237, 255, 0.15);
+            backdrop-filter: blur(1px);
+            -webkit-backdrop-filter: blur(1px);
+            z-index: 1;
+            pointer-events: none;
+        }
+        
+        /* 왼쪽 출구(Bin) 영역 및 칸막이 */
+        #bin-zone {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 76px;
+            height: 120px;
+            background: rgba(0, 0, 0, 0.3);
+            border-top: 2px dashed rgba(0, 0, 0, 0.35);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: bold;
+            color: #2c3e50;
+            z-index: 2;
+        }
+        #bin-divider {
+            position: absolute;
+            bottom: 0;
+            left: 76px;
+            width: 8px;
+            height: 120px;
+            background: #2c3e50;
+            border-radius: 4px 4px 0 0;
+            z-index: 8;
+        }
+
+        /* 크레인 전체 */
+        #claw-container {
+            position: absolute;
+            top: 0;
+            left: 145px;
+            width: 80px;
+            height: 490px;
+            pointer-events: none;
+            z-index: 10;
+        }
+        #claw-rope {
+            position: absolute;
+            top: 0;
+            left: 38px;
+            width: 4px;
+            height: 40px;
+            background: #555;
+        }
+        #claw-head-group {
+            position: absolute;
+            top: 40px;
+            left: 0;
+            width: 80px;
+            height: 40px;
+        }
+        #claw-head {
+            position: absolute;
+            top: 0;
+            width: 80px;
+            height: 16px;
+            background: #34495e;
+            border: 2px solid #2c3e50;
+            box-sizing: border-box;
+            border-radius: 6px;
+        }
+        .finger {
+            position: absolute;
+            bottom: -36px;
+            width: 10px;
+            height: 38px;
+            background: #f1c40f;
+            border: 1px solid rgba(0,0,0,0.25);
+            box-sizing: border-box;
+            transition: transform 0.25s ease;
+            border-radius: 2px;
+        }
+        .hook {
+            position: absolute;
+            bottom: -1px;
+            width: 14px;
+            height: 10px;
+            background: #f39c12;
+            border: 1px solid rgba(0,0,0,0.25);
+            box-sizing: border-box;
+            border-radius: 3px;
+        }
+        .finger.left { left: 6px; transform-origin: top center; transform: rotate(38deg); }
+        .finger.left .hook { right: -12px; border-radius: 0 6px 6px 0; }
+        .finger.right { right: 6px; transform-origin: top center; transform: rotate(-38deg); }
+        .finger.right .hook { left: -12px; border-radius: 6px 0 0 6px; }
+
+        /* 캡슐 디자인 */
+        .capsule {
+            position: absolute;
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            box-sizing: border-box;
+            border: 1.5px solid rgba(0, 0, 0, 0.3);
+            box-shadow: 
+                inset 3px 3px 6px rgba(255, 255, 255, 0.6),
+                inset -4px -4px 6px rgba(0, 0, 0, 0.25),
+                0 2px 5px rgba(0, 0, 0, 0.35);
+        }
+        
+        /* 조이스틱 및 컨트롤 */
+        .control-panel {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 30px;
+            margin-top: 10px;
+        }
+        #joystick-base {
+            position: relative;
+            width: 96px;
+            height: 96px;
+            background: rgba(255, 255, 255, 0.15);
+            border: 2px solid #555;
+            border-radius: 50%;
+            touch-action: none;
+        }
+        #joystick-stick {
+            position: absolute;
+            top: 23px;
+            left: 23px;
+            width: 50px;
+            height: 50px;
+            background: #3498db;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.4);
+        }
+        #grab-btn {
+            width: 78px;
+            height: 78px;
+            background: #e74c3c;
+            color: white;
+            font-weight: bold;
+            font-size: 15px;
+            border: 3px solid #fff;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.4);
+        }
+        #grab-btn:active { background: #c0392b; transform: scale(0.95); }
+        .hint { margin-top: 10px; font-size: 12px; color: #95a5a6; }
+
+        /* =========================================
+           1단계 모달: 캡슐 개봉 연출 오버레이
+           ========================================= */
+        #capsule-reveal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.82);
+            backdrop-filter: blur(5px);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            z-index: 9000;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        #capsule-reveal-overlay.show {
+            display: flex;
+            opacity: 1;
+        }
+
+        .big-capsule-box {
+            position: relative;
+            width: 180px;
+            height: 180px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .reveal-glow {
+            position: absolute;
+            width: 280px;
+            height: 280px;
+            background: radial-gradient(circle, rgba(255, 240, 150, 0.95) 0%, rgba(255, 200, 0, 0.35) 45%, transparent 70%);
+            border-radius: 50%;
+            transform: scale(0);
+            opacity: 0;
+            transition: transform 0.6s cubic-bezier(0.2, 1.2, 0.4, 1), opacity 0.5s ease;
+            pointer-events: none;
+        }
+        .big-capsule-box.opened .reveal-glow {
+            transform: scale(1.4);
+            opacity: 1;
+        }
+
+        .capsule-half {
+            position: absolute;
+            left: 0;
+            width: 180px;
+            height: 90px;
+            box-sizing: border-box;
+            border: 3px solid rgba(0, 0, 0, 0.3);
+            transition: transform 0.7s cubic-bezier(0.25, 1.35, 0.5, 1), opacity 0.5s ease 0.2s;
+            z-index: 4;
+        }
+        .capsule-top {
+            top: 0;
+            border-radius: 90px 90px 0 0;
+            border-bottom: 3px solid rgba(0, 0, 0, 0.35);
+            box-shadow: inset 8px 8px 16px rgba(255, 255, 255, 0.55);
+        }
+        .capsule-bottom {
+            bottom: 0;
+            background: #ffffff;
+            border-radius: 0 0 90px 90px;
+            border-top: none;
+            box-shadow: inset -8px -8px 16px rgba(0, 0, 0, 0.2);
+        }
+
+        @keyframes capsuleShake {
+            0%, 100% { transform: rotate(0deg) scale(1); }
+            20% { transform: rotate(-10deg) scale(1.04); }
+            40% { transform: rotate(10deg) scale(1.04); }
+            60% { transform: rotate(-8deg) scale(1.06); }
+            80% { transform: rotate(8deg) scale(1.06); }
+        }
+        .big-capsule-box.shaking { animation: capsuleShake 0.65s ease-in-out; }
+
+        .big-capsule-box.opened .capsule-top {
+            transform: translateY(-95px) rotate(-18deg);
+            opacity: 0.85;
+        }
+        .big-capsule-box.opened .capsule-bottom {
+            transform: translateY(95px) rotate(14deg);
+            opacity: 0.85;
+        }
+
+        /* 캡슐 안에서 등장하는 포카 프레임 미리보기 */
+        .capsule-prize-content {
+            position: relative;
+            z-index: 3;
+            text-align: center;
+            transform: scale(0.2);
+            opacity: 0;
+            transition: transform 0.55s cubic-bezier(0.2, 1.4, 0.4, 1) 0.15s, opacity 0.4s ease 0.15s;
+        }
+        .big-capsule-box.opened .capsule-prize-content {
+            transform: scale(1);
+            opacity: 1;
+        }
+        #reveal-frame-preview {
+            width: 110px;
+            height: 170px; /* 55:85 비율 */
+            object-fit: contain;
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 8px;
+            padding: 4px;
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.6);
+        }
+        .prize-text {
+            margin-top: 10px;
+            font-size: 18px;
+            font-weight: bold;
+            color: #fff;
+            text-shadow: 0 2px 6px rgba(0,0,0,0.8);
+            white-space: nowrap;
+        }
+
+        /* 확인 및 포카 제작 버튼 그룹 (요청하신 margin-top: 100px 반영) */
+        .reveal-btn-group {
+            margin-top: 100px;
+            display: flex;
+            gap: 12px;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease 0.5s;
+            z-index: 5;
+        }
+        .reveal-btn-group.visible {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        .modal-action-btn {
+            padding: 11px 22px;
+            font-size: 15px;
+            font-weight: bold;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+            transition: transform 0.1s ease;
+        }
+        .modal-action-btn:active { transform: scale(0.95); }
+        #make-poca-btn {
+            background: #ff6b81;
+            color: #fff;
+        }
+        #close-reveal-btn {
+            background: #f1c40f;
+            color: #222;
+        }
+
+        /* =========================================
+           2단계 모달: 나만의 포카 만들기 스튜디오
+           ========================================= */
+        #poca-studio-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #121212;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            padding: 15px;
+            box-sizing: border-box;
+        }
+        #poca-studio-overlay.show {
+            display: flex;
+        }
+        .studio-header {
+            width: 330px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .studio-title {
+            font-size: 16px;
+            font-weight: bold;
+            color: #f1c40f;
+        }
+        .studio-close-x {
+            background: none;
+            border: none;
+            color: #ccc;
+            font-size: 22px;
+            cursor: pointer;
+        }
+
+        /* 55:85 비율 포카 합성 캔버스 박스 (330 x 510) */
+        #poca-preview-box {
+            position: relative;
+            width: 330px;
+            height: 510px;
+            background: #ffffff;
+            border-radius: 14px;
+            overflow: visible; /* 프레임이 창 바깥으로 크게 튀어나오도록 허용 */
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.7);
+            margin: 20px 0; /* 커진 프레임이 상하 버튼과 겹치지 않게 여백 확보 */
+            touch-action: none;
+        }
+        /* 실시간 촬영용 비디오 */
+        #studio-video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+            filter: none;
+            z-index: 1;
+        }
+        /* 촬영된 사진 또는 업로드한 이미지 (드래그/확대 가능) */
+        #studio-user-photo {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) scale(1);
+            max-width: none;
+            filter: none;
+            cursor: grab;
+            z-index: 2;
+            display: none;
+        }
+        #studio-user-photo:active { cursor: grabbing; }
+
+        /* 최상단 포카 프레임 이미지 (클릭/드래그 투과) */
+        #studio-frame-img {
+            position: absolute;
+            top: -6%;
+            left: -7%;
+            width: 114%;
+            height: 112%;
+            object-fit: fill;
+            pointer-events: none;
+            z-index: 3;
+        }
+
+        /* 사진 확대/축소 슬라이더 바 */
+        #zoom-control-bar {
+            width: 330px;
+            margin-top: 10px;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            font-size: 12px;
+            color: #ccc;
+        }
+        #zoom-slider {
+            width: 190px;
+            accent-color: #ff6b81;
+        }
+
+        /* 스튜디오 하단 컨트롤 버튼들 */
+        .studio-controls {
+            width: 330px;
+            margin-top: 12px;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 8px;
+        }
+        .studio-btn {
+            padding: 10px 14px;
+            font-size: 13px;
+            font-weight: bold;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+            color: #fff;
+            background: #34495e;
+        }
+        .studio-btn.primary { background: #e74c3c; }
+        .studio-btn.upload { background: #3498db; }
+        .studio-btn.save { background: #2ecc71; color: #111; display: none; }
+        .studio-btn:active { transform: scale(0.96); }
+    </style>
+</head>
+<body>
+
+    <div id="status-bar">
+        <span>획득: <span id="score">0</span>개</span>
+        <span>남은 캡슐: <span id="remain">10</span>개</span>
+        <button id="cam-btn" onclick="startCamera()">📷 카메라 켜기</button>
+    </div>
+    
+    <!-- 55:85 비율 (330px x 510px) -->
+    <div id="machine">
+        <video id="camera-bg" autoplay playsinline muted></video>
+        <div id="white-glass-overlay"></div>
+
+        <div id="bin-zone">출구 (DROP)</div>
+        <div id="bin-divider"></div>
+
+        <div id="claw-container">
+            <div id="claw-rope"></div>
+            <div id="claw-head-group">
+                <div id="claw-head">
+                    <div class="finger left" id="left-finger"><div class="hook"></div></div>
+                    <div class="finger right" id="right-finger"><div class="hook"></div></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="control-panel">
+        <div id="joystick-base">
+            <div id="joystick-stick"></div>
+        </div>
+        <button id="grab-btn" onclick="handleDropClaw()">PUSH</button>
+    </div>
+    <div class="hint">PC 조작: 방향키(←, →) 이동 / 스페이스바(Space) 집게 내리기</div>
+
+    <!-- 1단계 모달: 캡슐 개봉 연출 -->
+    <div id="capsule-reveal-overlay">
+        <div class="big-capsule-box" id="big-capsule-box">
+            <div class="reveal-glow"></div>
+            <div class="capsule-half capsule-top" id="reveal-cap-top"></div>
+            <div class="capsule-prize-content">
+                <img id="reveal-frame-preview" src="" alt="획득한 포카 프레임">
+                <div class="prize-text" id="reveal-text">포카 프레임 획득!</div>
+            </div>
+            <div class="capsule-half capsule-bottom"></div>
+        </div>
+        <div class="reveal-btn-group" id="reveal-btn-group">
+            <button class="modal-action-btn" id="make-poca-btn" onclick="openPocaStudio()">📸 포카 만들기</button>
+            <button class="modal-action-btn" id="close-reveal-btn" onclick="closeRevealModal()">확인</button>
+        </div>
+    </div>
+
+    <!-- 2단계 모달: 나만의 포카 만들기 스튜디오 -->
+    <div id="poca-studio-overlay">
+        <div class="studio-header">
+            <span class="studio-title" id="studio-frame-title">✨ 나만의 포카 만들기</span>
+            <button class="studio-close-x" onclick="closePocaStudio()">✕</button>
+        </div>
+
+        <div id="poca-preview-box">
+            <div id="studio-media-wrapper">
+                <!-- 실시간 셀카 카메라 -->
+                <video id="studio-video" autoplay playsinline muted></video>
+                <!-- 촬영 또는 첨부된 사용자 사진 -->
+                <img id="studio-user-photo" src="" alt="내 사진">
+            </div>
+            <!-- 찍는 창보다 크게 덮이는 포카 프레임 오버레이 -->
+            <img id="studio-frame-img" src="" alt="포카 프레임">
+        </div>
+
+        <!-- 이미지 첨부/촬영 후 위치 & 확대 조절 바 -->
+        <div id="zoom-control-bar">
+            <span>축소</span>
+            <input type="range" id="zoom-slider" min="0.3" max="2.5" step="0.05" value="1">
+            <span>확대 (드래그 이동)</span>
+        </div>
+
+        <div class="studio-controls">
+            <button class="studio-btn primary" id="snap-btn" onclick="takeSnapshot()">📸 찰칵! 촬영</button>
+            <button class="studio-btn" id="retake-btn" onclick="resetToCameraMode()" style="display:none;">🔄 다시 찍기</button>
+            <button class="studio-btn upload" onclick="document.getElementById('photo-file-input').click()">🖼️ 앨범 사진 첨부</button>
+            <button class="studio-btn save" id="save-poca-btn" onclick="downloadPocaImage()">💾 포카 저장</button>
+            <input type="file" id="photo-file-input" accept="image/*" style="display:none;" onchange="handleFileUpload(event)">
+        </div>
+    </div>
+
+    <script>
+        const machine = document.getElementById('machine');
+        const cameraBg = document.getElementById('camera-bg');
+        const camBtn = document.getElementById('cam-btn');
+        const clawContainer = document.getElementById('claw-container');
+        const clawRope = document.getElementById('claw-rope');
+        const clawHeadGroup = document.getElementById('claw-head-group');
+        const leftFinger = document.getElementById('left-finger');
+        const rightFinger = document.getElementById('right-finger');
+        const scoreEl = document.getElementById('score');
+        const remainEl = document.getElementById('remain');
+        
+        const joystickBase = document.getElementById('joystick-base');
+        const joystickStick = document.getElementById('joystick-stick');
+
+        // 55:85 비율 판 크기 상수
+        const BOARD_WIDTH = 330;
+        const BOARD_HEIGHT = 510;
+        const DEFAULT_CLAW_X = 145;
+        const DEFAULT_CLAW_Y = 40;
+
+        let activeCameraStream = null;
+
+        // 전면 카메라 실행 함수 (거울 모드)
+        async function startCamera() {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                alert('이 브라우저는 카메라 기능을 지원하지 않습니다.');
+                return;
+            }
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'user' },
+                    audio: false
+                });
+                activeCameraStream = stream;
+                cameraBg.srcObject = stream;
+                camBtn.innerText = '📷 카메라 ON';
+                camBtn.style.background = '#27ae60';
+            } catch (err) {
+                console.warn('카메라 권한 요청 실패:', err);
+                camBtn.innerText = '📷 권한 필요';
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', startCamera);
+
+        // 위치 및 상태 변수
+        let clawX = DEFAULT_CLAW_X;
+        let clawY = DEFAULT_CLAW_Y;
+        let moveDir = 0;  
+        let isDropping = false;
+        let isDragging = false;
+        let score = 0;
+
+        let capsules = [];
+        let grabbedCapsule = null;
+
+        // 캡슐 10개 배치
+        function initCapsules() {
+            capsules.forEach(c => c.el.remove());
+            capsules = [];
+
+            const layout = [
+                { x: 94, bottom: 12 }, { x: 135, bottom: 12 }, { x: 176, bottom: 12 }, { x: 217, bottom: 12 }, { x: 258, bottom: 12 },
+                { x: 115, bottom: 42 }, { x: 175, bottom: 42 }, { x: 235, bottom: 42 },
+                { x: 145, bottom: 72 }, { x: 205, bottom: 72 }
+            ];
+
+            layout.forEach((pos, idx) => {
+                const el = document.createElement('div');
+                el.className = 'capsule';
+
+                const x = pos.x + (Math.random() * 8 - 4);
+                const bottom = pos.bottom;
+                const randomColor = `hsl(${Math.floor(Math.random() * 360)}, 75%, 55%)`;
+                const randomAngle = Math.floor(Math.random() * 120 - 60);
+
+                el.style.left = x + 'px';
+                el.style.bottom = bottom + 'px';
+                el.style.zIndex = Math.floor(bottom / 10) + 3;
+                el.style.background = `linear-gradient(180deg, ${randomColor} 0%, ${randomColor} 48%, rgba(0,0,0,0.25) 48%, rgba(0,0,0,0.25) 52%, #ffffff 52%, #ffffff 100%)`;
+                el.style.transform = `rotate(${randomAngle}deg)`;
+
+                machine.appendChild(el);
+
+                capsules.push({
+                    id: idx,
+                    el: el,
+                    x: x,
+                    bottom: bottom,
+                    baseBottom: bottom,
+                    color: randomColor
+                });
+            });
+
+            remainEl.innerText = capsules.length;
+        }
+
+        initCapsules();
+
+        function updateClawPosition(x, y) {
+            clawX = x;
+            clawY = y;
+            clawContainer.style.left = clawX + 'px';
+            clawRope.style.height = clawY + 'px';
+            clawHeadGroup.style.top = clawY + 'px';
+
+            if (grabbedCapsule) {
+                grabbedCapsule.x = clawX + 21;
+                grabbedCapsule.bottom = BOARD_HEIGHT - clawY - 54;
+                grabbedCapsule.el.style.transition = 'none';
+                grabbedCapsule.el.style.left = grabbedCapsule.x + 'px';
+                grabbedCapsule.el.style.bottom = grabbedCapsule.bottom + 'px';
+            }
+        }
+
+        function setClawAngle(angle) {
+            leftFinger.style.transform = `rotate(${angle}deg)`;
+            rightFinger.style.transform = `rotate(${-angle}deg)`;
+        }
+
+        function gameLoop() {
+            if (moveDir !== 0 && !isDropping) {
+                let nextX = clawX + moveDir * 3;
+                if (nextX < 86) nextX = 86;
+                if (nextX > 242) nextX = 242;
+                updateClawPosition(nextX, clawY);
+            }
+            requestAnimationFrame(gameLoop);
+        }
+        requestAnimationFrame(gameLoop);
+
+        // [PC 키보드 조작]
+        window.addEventListener('keydown', (e) => {
+            if (isDropping) return;
+            if (e.key === 'ArrowLeft') moveDir = -1;
+            if (e.key === 'ArrowRight') moveDir = 1;
+            if (e.key === ' ') {
+                e.preventDefault();
+                handleDropClaw();
+            }
+        });
+        window.addEventListener('keyup', (e) => {
+            if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') moveDir = 0;
+        });
+
+        // [조이스틱 조작]
+        const maxRadius = 25;
+        function handleStart() { isDragging = true; }
+        function handleMove(clientX) {
+            if (!isDragging || isDropping) return;
+            const rect = joystickBase.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const dx = clientX - centerX;
+            const distance = Math.min(Math.abs(dx), maxRadius);
+            const stickX = dx > 0 ? distance : -distance;
+            
+            joystickStick.style.transform = `translateX(${stickX}px)`;
+            if (dx < -6) moveDir = -1;
+            else if (dx > 6) moveDir = 1;
+            else moveDir = 0;
+        }
+        function handleEnd() {
+            isDragging = false;
+            moveDir = 0;
+            joystickStick.style.transform = `translateX(0px)`;
+        }
+
+        joystickStick.addEventListener('mousedown', handleStart);
+        window.addEventListener('mousemove', (e) => handleMove(e.clientX));
+        window.addEventListener('mouseup', handleEnd);
+        joystickStick.addEventListener('touchstart', handleStart);
+        window.addEventListener('touchmove', (e) => {
+            if (e.touches.length > 0) handleMove(e.touches[0].clientX);
+        });
+        window.addEventListener('touchend', handleEnd);
+
+        // 1단계: 하강
+        function handleDropClaw() {
+            if (isDropping) return;
+            isDropping = true;
+            moveDir = 0;
+            grabbedCapsule = null;
+
+            const clawCenter = clawX + 40;
+            let targetCapsule = null;
+            let highestBottom = 12;
+
+            capsules.forEach(cap => {
+                const capCenter = cap.x + 19;
+                if (Math.abs(clawCenter - capCenter) < 28) {
+                    if (cap.bottom >= highestBottom) {
+                        highestBottom = cap.bottom;
+                        targetCapsule = cap;
+                    }
+                }
+            });
+
+            const maxFloorY = BOARD_HEIGHT - 70;
+            const targetDropY = targetCapsule ? Math.min(maxFloorY, BOARD_HEIGHT - targetCapsule.bottom - 54) : maxFloorY;
+
+            const downTimer = setInterval(() => {
+                if (clawY < targetDropY) {
+                    updateClawPosition(clawX, clawY + 4.5);
+                } else {
+                    clearInterval(downTimer);
+                    
+                    // 2단계: 잡기
+                    const gripPower = Math.random();
+                    setClawAngle(-6);
+
+                    if (targetCapsule) {
+                        const distance = Math.abs(clawCenter - (targetCapsule.x + 19));
+                        if (distance < 22 && gripPower > 0.2) {
+                            grabbedCapsule = targetCapsule;
+                            grabbedCapsule.el.style.zIndex = 9;
+                        }
+                    }
+
+                    setTimeout(riseClaw, 600);
+                }
+            }, 16);
+        }
+
+        // 3단계: 상승
+        function riseClaw() {
+            const upTimer = setInterval(() => {
+                if (clawY > DEFAULT_CLAW_Y) {
+                    updateClawPosition(clawX, clawY - 4.5);
+
+                    if (grabbedCapsule) {
+                        const randomEndurance = Math.random();
+                        if (randomEndurance < 0.014) {
+                            dropCapsuleToFloor();
+                        } else if (randomEndurance < 0.2) {
+                            setClawAngle(2);
+                        } else {
+                            setClawAngle(-6);
+                        }
+                    }
+                } else {
+                    clearInterval(upTimer);
+                    releaseInBin();
+                }
+            }, 16);
+        }
+
+        // 4단계: 왼쪽 출구(Bin)로 이동 후 투하
+        function releaseInBin() {
+            const targetX = 18;
+            const moveTimer = setInterval(() => {
+                if (clawX > targetX) {
+                    updateClawPosition(clawX - 3, clawY);
+                } else {
+                    clearInterval(moveTimer);
+                    setClawAngle(38);
+
+                    if (grabbedCapsule) {
+                        const wonCapsule = grabbedCapsule;
+                        grabbedCapsule = null;
+
+                        wonCapsule.el.style.transition = 'bottom 0.45s cubic-bezier(0.5, 0, 1, 1), transform 0.45s ease, opacity 0.3s ease 0.35s';
+                        wonCapsule.el.style.bottom = '15px';
+                        wonCapsule.el.style.transform = 'rotate(160deg)';
+                        wonCapsule.el.style.opacity = '0';
+
+                        capsules = capsules.filter(c => c.id !== wonCapsule.id);
+
+                        setTimeout(() => {
+                            wonCapsule.el.remove();
+                            score++;
+                            scoreEl.innerText = score;
+                            remainEl.innerText = capsules.length;
+
+                            showCapsuleReveal(wonCapsule.color);
+                        }, 600);
+                    } else {
+                        setTimeout(returnClawToCenter, 400);
+                    }
+                }
+            }, 16);
+        }
+
+        function dropCapsuleToFloor() {
+            if (!grabbedCapsule) return;
+            const dropped = grabbedCapsule;
+            grabbedCapsule = null;
+
+            setClawAngle(15);
+            dropped.bottom = dropped.baseBottom;
+            dropped.el.style.transition = 'bottom 0.45s cubic-bezier(0.5, 0, 1, 1), transform 0.45s ease';
+            dropped.el.style.bottom = dropped.bottom + 'px';
+            dropped.el.style.transform = `rotate(${Math.floor(Math.random() * 90)}deg)`;
+            dropped.el.style.zIndex = Math.floor(dropped.bottom / 10) + 3;
+        }
+
+        function returnClawToCenter() {
+            const returnTimer = setInterval(() => {
+                if (clawX < DEFAULT_CLAW_X) {
+                    updateClawPosition(clawX + 4, clawY);
+                } else {
+                    clearInterval(returnTimer);
+                    isDropping = false;
+                }
+            }, 16);
+        }
+
+        // ========================================================
+        // 캡슐 개봉 & 첨부하신 포카 프레임 3종 매칭
+        // ========================================================
+        const revealOverlay = document.getElementById('capsule-reveal-overlay');
+        const bigCapsuleBox = document.getElementById('big-capsule-box');
+        const revealCapTop = document.getElementById('reveal-cap-top');
+        const revealFramePreview = document.getElementById('reveal-frame-preview');
+        const revealText = document.getElementById('reveal-text');
+        const revealBtnGroup = document.getElementById('reveal-btn-group');
+
+        // 포카 프레임 이미지 목록
+        const framePool = [
+            { name: '다크 고딕 프레임', src: 'frame.png' },
+            { name: '로리타 리본 프레임', src: 'frame (1).png' },
+            { name: '폭신폭신 곰돌이 퍼 프레임', src: 'frame (2).png' },
+            { name: '몽환 나비 프레임', src: 'frame (3).png' },
+            { name: '천사 프레임', src: 'frame (4).png' },
+            { name: '퐁실 하늘 구름 프레임', src: 'frame (5).png' },
+            // { name: '별빛 프레임', src: 'frame (6).png' },
+            // { name: '레트로 필름 프레임', src: 'frame (7).png' },
+            // { name: '화려한 꽃 프레임', src: 'frame (8).png' },
+            // { name: '심플 모던 프레임', src: 'frame (9).png' }
+        ];
+
+        let currentWonFrame = framePool[0];
+
+        function showCapsuleReveal(capsuleColor) {
+            revealCapTop.style.background = capsuleColor || '#e74c3c';
+            bigCapsuleBox.classList.remove('shaking', 'opened');
+            revealBtnGroup.classList.remove('visible');
+
+            // 포카 프레임 중 랜덤 선택
+            currentWonFrame = framePool[Math.floor(Math.random() * framePool.length)];
+            revealFramePreview.src = currentWonFrame.src;
+            revealText.innerText = currentWonFrame.name;
+
+            revealOverlay.style.display = 'flex';
+            requestAnimationFrame(() => {
+                revealOverlay.classList.add('show');
+                bigCapsuleBox.classList.add('shaking');
+            });
+
+            setTimeout(() => {
+                bigCapsuleBox.classList.remove('shaking');
+                bigCapsuleBox.classList.add('opened');
+                revealBtnGroup.classList.add('visible');
+            }, 700);
+        }
+
+        function closeRevealModal() {
+            revealOverlay.classList.remove('show');
+            setTimeout(() => {
+                revealOverlay.style.display = 'none';
+                if (capsules.length === 0) {
+                    initCapsules();
+                }
+                returnClawToCenter();
+            }, 300);
+        }
+
+        // ========================================================
+        // 나만의 포카 만들기 스튜디오 (촬영 / 첨부 / 합성 저장)
+        // ========================================================
+        const pocaStudioOverlay = document.getElementById('poca-studio-overlay');
+        const studioFrameTitle = document.getElementById('studio-frame-title');
+        const studioVideo = document.getElementById('studio-video');
+        const studioUserPhoto = document.getElementById('studio-user-photo');
+        const studioFrameImg = document.getElementById('studio-frame-img');
+        const zoomControlBar = document.getElementById('zoom-control-bar');
+        const zoomSlider = document.getElementById('zoom-slider');
+        const snapBtn = document.getElementById('snap-btn');
+        const retakeBtn = document.getElementById('retake-btn');
+        const savePocaBtn = document.getElementById('save-poca-btn');
+        const previewBox = document.getElementById('poca-preview-box');
+
+        // 사진 이동/확대 상태 변수
+        let photoOffsetX = 0;
+        let photoOffsetY = 0;
+        let photoScale = 1;
+        let isPhotoDragging = false;
+        let dragStartX = 0;
+        let dragStartY = 0;
+
+        async function openPocaStudio() {
+            // 1단계 개봉 모달 닫기
+            revealOverlay.classList.remove('show');
+            revealOverlay.style.display = 'none';
+
+            // 스튜디오에 획득한 프레임 세팅
+            studioFrameTitle.innerText = `✨ ${currentWonFrame.name}`;
+            studioFrameImg.src = currentWonFrame.src;
+
+            // 카메라 모드 초기화
+            resetToCameraMode();
+            pocaStudioOverlay.classList.add('show');
+
+            // 카메라 스트림 연결
+            if (activeCameraStream) {
+                studioVideo.srcObject = activeCameraStream;
+            } else {
+                await startCamera();
+                if (activeCameraStream) studioVideo.srcObject = activeCameraStream;
+            }
+        }
+
+        function closePocaStudio() {
+            pocaStudioOverlay.classList.remove('show');
+            if (capsules.length === 0) {
+                initCapsules();
+            }
+            returnClawToCenter();
+        }
+
+        // 실시간 카메라 촬영 모드로 전환
+        function resetToCameraMode() {
+            studioVideo.style.display = 'block';
+            studioUserPhoto.style.display = 'none';
+            zoomControlBar.style.display = 'none';
+            snapBtn.style.display = 'inline-block';
+            retakeBtn.style.display = 'none';
+            savePocaBtn.style.display = 'none';
+        }
+
+        // 사진 편집 모드로 전환 (촬영 직후 또는 앨범 업로드 직후)
+        function enterPhotoEditMode(imgSrc) {
+            studioUserPhoto.onload = () => {
+                // 330x510 박스에 알맞게 초기 배율 자동 계산
+                const scaleW = BOARD_WIDTH / studioUserPhoto.naturalWidth;
+                const scaleH = BOARD_HEIGHT / studioUserPhoto.naturalHeight;
+                photoScale = Math.max(scaleW, scaleH);
+                photoOffsetX = 0;
+                photoOffsetY = 0;
+
+                zoomSlider.min = (photoScale * 0.5).toFixed(2);
+                zoomSlider.max = (photoScale * 2.5).toFixed(2);
+                zoomSlider.value = photoScale.toFixed(2);
+                updateUserPhotoTransform();
+            };
+            studioUserPhoto.src = imgSrc;
+            studioUserPhoto.style.display = 'block';
+            studioVideo.style.display = 'none';
+
+            zoomControlBar.style.display = 'flex';
+            snapBtn.style.display = 'none';
+            retakeBtn.style.display = 'inline-block';
+            savePocaBtn.style.display = 'inline-block';
+        }
+
+        // [기능 1] 실시간 전면 카메라로 찰칵 촬영 (거울 모드 반전 반영)
+        function takeSnapshot() {
+            if (!studioVideo.srcObject) {
+                alert('카메라가 켜져 있지 않습니다. 상단의 [카메라 켜기]를 먼저 허용하거나 [앨범 사진 첨부]를 이용해 주세요.');
+                return;
+            }
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = BOARD_WIDTH * 2;  // 고해상도 660x1020
+            tempCanvas.height = BOARD_HEIGHT * 2;
+            const ctx = tempCanvas.getContext('2d');
+
+            // 비디오 비율에 맞춰 중앙 크롭(object-fit: cover) + 거울 좌우 반전
+            const vw = studioVideo.videoWidth;
+            const vh = studioVideo.videoHeight;
+            const targetRatio = tempCanvas.width / tempCanvas.height;
+            const videoRatio = vw / vh;
+
+            let sx = 0, sy = 0, sw = vw, sh = vh;
+            if (videoRatio > targetRatio) {
+                sw = vh * targetRatio;
+                sx = (vw - sw) / 2;
+            } else {
+                sh = vw / targetRatio;
+                sy = (vh - sh) / 2;
+            }
+
+            ctx.translate(tempCanvas.width, 0);
+            ctx.scale(-1, 1);
+            ctx.drawImage(studioVideo, sx, sy, sw, sh, 0, 0, tempCanvas.width, tempCanvas.height);
+
+            enterPhotoEditMode(tempCanvas.toDataURL('image/png'));
+        }
+
+        // [기능 2] 기기 앨범에서 이미지 첨부
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                enterPhotoEditMode(e.target.result);
+            };
+            reader.readAsDataURL(file);
+            event.target.value = ''; // 같은 파일 재선택 가능하도록 초기화
+        }
+
+        // 사진 위치 및 배율 적용
+        function updateUserPhotoTransform() {
+            studioUserPhoto.style.transform = `translate(calc(-50% + ${photoOffsetX}px), calc(-50% + ${photoOffsetY}px)) scale(${photoScale})`;
+        }
+
+        zoomSlider.addEventListener('input', (e) => {
+            photoScale = parseFloat(e.target.value);
+            updateUserPhotoTransform();
+        });
+
+        // 사진 드래그 이동 (마우스 & 터치 지원)
+        function startPhotoDrag(clientX, clientY) {
+            if (studioUserPhoto.style.display === 'none') return;
+            isPhotoDragging = true;
+            dragStartX = clientX - photoOffsetX;
+            dragStartY = clientY - photoOffsetY;
+        }
+        function movePhotoDrag(clientX, clientY) {
+            if (!isPhotoDragging) return;
+            photoOffsetX = clientX - dragStartX;
+            photoOffsetY = clientY - dragStartY;
+            updateUserPhotoTransform();
+        }
+        function endPhotoDrag() {
+            isPhotoDragging = false;
+        }
+
+        previewBox.addEventListener('mousedown', (e) => startPhotoDrag(e.clientX, e.clientY));
+        window.addEventListener('mousemove', (e) => movePhotoDrag(e.clientX, e.clientY));
+        window.addEventListener('mouseup', endPhotoDrag);
+
+        previewBox.addEventListener('touchstart', (e) => {
+            if (e.touches.length > 0) startPhotoDrag(e.touches[0].clientX, e.touches[0].clientY);
+        });
+        previewBox.addEventListener('touchmove', (e) => {
+            if (e.touches.length > 0) movePhotoDrag(e.touches[0].clientX, e.touches[0].clientY);
+        });
+        window.addEventListener('touchend', endPhotoDrag);
+
+        // [기능 3] 완성된 포토카드 PNG 파일로 합성 및 다운로드
+        function downloadPocaImage() {
+            const outCanvas = document.createElement('canvas');
+            const scaleFactor = 2; // 고화질 출력 배율
+            const padX = Math.round(BOARD_WIDTH * 0.07 * scaleFactor); // 좌우 7% 여백
+            const padY = Math.round(BOARD_HEIGHT * 0.06 * scaleFactor); // 상하 6% 여백
+
+            const photoAreaW = BOARD_WIDTH * scaleFactor;
+            const photoAreaH = BOARD_HEIGHT * scaleFactor;
+
+            outCanvas.width = photoAreaW + padX * 2;
+            outCanvas.height = photoAreaH + padY * 2;
+            const ctx = outCanvas.getContext('2d');
+
+            // 1. 찍는 창(330x510 비율) 영역에만 사용자 사진 클리핑해서 그리기
+            ctx.save();
+            ctx.beginPath();
+            if (ctx.roundRect) {
+                ctx.roundRect(padX, padY, photoAreaW, photoAreaH, 14 * scaleFactor);
+            } else {
+                ctx.rect(padX, padY, photoAreaW, photoAreaH);
+            }
+            ctx.clip();
+
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(padX, padY, photoAreaW, photoAreaH);
+
+            const drawW = studioUserPhoto.naturalWidth * photoScale * scaleFactor;
+            const drawH = studioUserPhoto.naturalHeight * photoScale * scaleFactor;
+            const drawX = padX + (photoAreaW - drawW) / 2 + (photoOffsetX * scaleFactor);
+            const drawY = padY + (photoAreaH - drawH) / 2 + (photoOffsetY * scaleFactor);
+            ctx.drawImage(studioUserPhoto, drawX, drawY, drawW, drawH);
+            ctx.restore();
+
+            // 2. 이미 화면에 로드된 프레임 이미지(studioFrameImg)를 그대로 덮어씌우기
+            ctx.drawImage(studioFrameImg, 0, 0, outCanvas.width, outCanvas.height);
+
+            // 3. Blob 방식으로 안전하게 파일 다운로드 실행
+            try {
+                outCanvas.toBlob((blob) => {
+                    if (!blob) {
+                        alert('이미지 생성에 실패했습니다. 로컬 서버(Live Server) 환경에서 실행해 주세요.');
+                        return;
+                    }
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.download = `my_photocard_${Date.now()}.png`;
+                    link.href = url;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    setTimeout(() => URL.revokeObjectURL(url), 1000);
+                }, 'image/png');
+            } catch (err) {
+                alert('브라우저 로컬 파일 보안(CORS)으로 인해 저장이 차단되었습니다. VS Code Live Server 등 로컬 서버에서 열어주세요!');
+            }
+        }
+    </script>
+</body>
+</html>
