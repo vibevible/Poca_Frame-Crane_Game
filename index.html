@@ -481,17 +481,19 @@
         }
         #studio-user-photo:active { cursor: grabbing; }
 
-        /* 최상단 포카 프레임 이미지 (클릭/드래그 투과) */
+        /* 최상단 포카 프레임 이미지 (촬영 전 위치/크기 조절 가능) */
         #studio-frame-img {
             position: absolute;
-            top: -9%;
-            left: -10%;
-            width: 120%;
-            height: 118%;
-            object-fit: fill;
-            pointer-events: none;
+            top: 50%;
+            left: 50%;
+            width: 330px;  /* 기본 55:85 기준 너비 */
+            height: 510px; /* 기본 55:85 기준 높이 */
+            transform: translate(-50%, -50%) scale(1.18);
+            object-fit: contain;
+            cursor: grab;
             z-index: 3;
         }
+        #studio-frame-img:active { cursor: grabbing; }
 
         /* 사진 확대/축소 슬라이더 바 */
         #zoom-control-bar {
@@ -499,15 +501,20 @@
             z-index: 10;
             width: 330px;
             margin-top: 52px; /* 프레임 하단 장식이 닿지 않도록 여백 확보 */
-            display: none;
+            display: flex;
             align-items: center;
             justify-content: center;
-            gap: 10px;
+            gap: 8px;
             font-size: 12px;
             color: #ccc;
         }
+        #zoom-target-label {
+            color: #f1c40f;
+            font-weight: bold;
+            min-width: 68px;
+        }
         #zoom-slider {
-            width: 190px;
+            width: 165px;
             accent-color: #ff6b81;
         }
 
@@ -852,17 +859,18 @@
             <img id="studio-frame-img" src="" alt="포카 프레임">
         </div>
 
-        <!-- 이미지 첨부/촬영 후 위치 & 확대 조절 바 -->
+        <!-- 프레임 / 사진 크기 조절 바 -->
         <div id="zoom-control-bar">
-            <span>축소</span>
-            <input type="range" id="zoom-slider" min="0.3" max="2.5" step="0.05" value="1">
-            <span>확대 (드래그 이동)</span>
+            <span id="zoom-target-label">🖼️ 프레임</span>
+            <input type="range" id="zoom-slider" min="0.8" max="1.6" step="0.02" value="1.18">
+            <span id="zoom-hint-text">크기 (드래그 이동)</span>
         </div>
 
         <div class="studio-controls">
             <button class="studio-btn primary" id="snap-btn" onclick="takeSnapshot()">📸 찰칵! 촬영</button>
             <button class="studio-btn" id="retake-btn" onclick="resetToCameraMode()" style="display:none;">🔄 다시 찍기</button>
-            <button class="studio-btn upload" onclick="document.getElementById('photo-file-input').click()">🖼️ 앨범 사진 첨부</button>
+            <button class="studio-btn" id="edit-target-btn" onclick="toggleEditTarget()" style="display:none;">🖼️ 프레임 위치수정</button>
+            <button class="studio-btn upload" onclick="document.getElementById('photo-file-input').click()">📁 앨범 사진 첨부</button>
             <button class="studio-btn save" id="save-poca-btn" onclick="downloadPocaImage()">💾 포카 저장</button>
             <input type="file" id="photo-file-input" accept="image/*" style="display:none;" onchange="handleFileUpload(event)">
         </div>
@@ -1233,7 +1241,17 @@
             { name: '폭신폭신 곰돌이 퍼 프레임', src: 'images/frame2.png' },
             { name: '몽환 나비 프레임', src: 'images/frame3.png' },
             { name: '천사 프레임', src: 'images/frame4.png' },
-            { name: '퐁실 하늘 구름 프레임', src: 'images/frame5.png' }
+            { name: '퐁실 하늘 구름 프레임', src: 'images/frame5.png' },
+            { name: '파스텔 고양이 프레임', src: 'images/frame6.png' },
+            { name: '자연의 아름다움 프레임', src: 'images/frame7.png' },
+            { name: '파스텔 하늘하늘 프레임', src: 'images/frame8.png' },
+            { name: '뽀짝활짝 노랑노랑 프레임', src: 'images/frame9.png' },
+            { name: '달콤한 디저트 프레임', src: 'images/frame10.png' },
+            { name: '공주의 정원 꽃밭 프레임', src: 'images/frame11.png' },
+            { name: '시크한 검은 고양이 프레임', src: 'images/frame12.png' },
+            { name: '늠름한 왕자님 프레임', src: 'images/frame13.png' },
+            { name: '반짝 연두연두 프레임', src: 'images/frame14.png' },
+            // { name: '옐로우 하트 프레임', src: 'images/frame14.png' }
         ];
 
         // 시작 페이지 배경 무한 루프 트랙 초기화 (1 -> 2 -> 3 -> 1...)
@@ -1307,11 +1325,22 @@
         const retakeBtn = document.getElementById('retake-btn');
         const savePocaBtn = document.getElementById('save-poca-btn');
         const previewBox = document.getElementById('poca-preview-box');
+        const zoomTargetLabel = document.getElementById('zoom-target-label');
+        const editTargetBtn = document.getElementById('edit-target-btn');
 
+        // 사진 이동/확대 상태 변수
         let photoOffsetX = 0;
         let photoOffsetY = 0;
         let photoScale = 1;
-        let isPhotoDragging = false;
+
+        // 프레임 이동/확대 상태 변수 (새로 추가)
+        let frameOffsetX = 0;
+        let frameOffsetY = 0;
+        let frameScale = 1.18; // 기본 약간 크게 시작
+
+        // 현재 조작 대상 ('frame' 또는 'photo')
+        let activeEditTarget = 'frame';
+        let isPreviewDragging = false;
         let dragStartX = 0;
         let dragStartY = 0;
 
@@ -1384,6 +1413,25 @@
             return canvas;
         }
 
+        // 프레임 위치·배율 및 동적 마스크 동기화 적용
+        function updateFrameTransform() {
+            studioFrameImg.style.transform = `translate(calc(-50% + ${frameOffsetX}px), calc(-50% + ${frameOffsetY}px)) scale(${frameScale})`;
+
+            // 동적 마스크 위치와 크기도 프레임과 똑같이 이동·확대
+            const mediaWrapper = document.getElementById('studio-media-wrapper');
+            if (dynamicMaskCanvas) {
+                const maskW = BOARD_WIDTH * frameScale;
+                const maskH = BOARD_HEIGHT * frameScale;
+                const maskX = (BOARD_WIDTH - maskW) / 2 + frameOffsetX;
+                const maskY = (BOARD_HEIGHT - maskH) / 2 + frameOffsetY;
+
+                mediaWrapper.style.webkitMaskSize = `${maskW}px ${maskH}px`;
+                mediaWrapper.style.maskSize = `${maskW}px ${maskH}px`;
+                mediaWrapper.style.webkitMaskPosition = `${maskX}px ${maskY}px`;
+                mediaWrapper.style.maskPosition = `${maskX}px ${maskY}px`;
+            }
+        }
+
         async function openPocaStudio() {
             revealOverlay.classList.remove('show');
             revealOverlay.style.display = 'none';
@@ -1393,9 +1441,12 @@
             mediaWrapper.style.maskImage = 'none';
             dynamicMaskCanvas = null;
 
+            // 프레임 위치·배율 기본값 초기화
+            frameOffsetX = 0;
+            frameOffsetY = 0;
+            frameScale = 1.18;
+
             studioFrameTitle.innerText = `✨ ${currentWonFrame.name}`;
-            
-            // crossOrigin 속성을 제거하여 로컬 이미지 로드가 차단되지 않도록 수정
             studioFrameImg.removeAttribute('crossorigin');
             studioFrameImg.onload = () => {
                 try {
@@ -1406,8 +1457,9 @@
                         mediaWrapper.style.maskImage = maskUrl;
                     }
                 } catch (err) {
-                    console.warn('동적 마스크 생성 건너뜀 (로컬 파일 보안 제한):', err);
+                    console.warn('동적 마스크 생성 건너뜀:', err);
                 }
+                updateFrameTransform();
             };
             studioFrameImg.src = currentWonFrame.src;
 
@@ -1438,16 +1490,22 @@
             snapBtn.style.opacity = '1';
         }
 
+        // 촬영 전 모드: 프레임 위치·크기 조절 활성화
         function resetToCameraMode() {
             studioVideo.style.display = 'block';
             studioUserPhoto.style.display = 'none';
-            zoomControlBar.style.display = 'none';
+            zoomControlBar.style.display = 'flex';
             snapBtn.style.display = 'inline-block';
             retakeBtn.style.display = 'none';
+            editTargetBtn.style.display = 'none';
             savePocaBtn.style.display = 'none';
-            document.querySelector('.studio-controls').style.marginTop = '52px';
+            document.querySelector('.studio-controls').style.marginTop = '12px';
+
+            setEditTarget('frame');
+            updateFrameTransform();
         }
 
+        // 촬영 후 / 앨범 첨부 후 모드: 내 사진 위치·크기 조절 활성화
         function enterPhotoEditMode(imgSrc) {
             studioUserPhoto.onload = () => {
                 const scaleW = BOARD_WIDTH / studioUserPhoto.naturalWidth;
@@ -1455,11 +1513,8 @@
                 photoScale = Math.max(scaleW, scaleH);
                 photoOffsetX = 0;
                 photoOffsetY = 0;
-
-                zoomSlider.min = (photoScale * 0.5).toFixed(2);
-                zoomSlider.max = (photoScale * 2.5).toFixed(2);
-                zoomSlider.value = photoScale.toFixed(2);
                 updateUserPhotoTransform();
+                setEditTarget('photo');
             };
             studioUserPhoto.src = imgSrc;
             studioUserPhoto.style.display = 'block';
@@ -1468,12 +1523,13 @@
             zoomControlBar.style.display = 'flex';
             snapBtn.style.display = 'none';
             retakeBtn.style.display = 'inline-block';
+            editTargetBtn.style.display = 'inline-block';
             savePocaBtn.style.display = 'inline-block';
             document.querySelector('.studio-controls').style.marginTop = '12px';
         }
 
         let countdownTimer = null;
-let isCountingDown = false;
+        let isCountingDown = false;
 
         // [기능 1] 3초 카운트다운 후 촬영 실행
         function takeSnapshot() {
@@ -1572,48 +1628,99 @@ let isCountingDown = false;
             event.target.value = '';
         }
 
+        // 사진 위치·배율 적용
         function updateUserPhotoTransform() {
             studioUserPhoto.style.transform = `translate(calc(-50% + ${photoOffsetX}px), calc(-50% + ${photoOffsetY}px)) scale(${photoScale})`;
         }
 
+        // 조작 대상을 '프레임' 또는 '사진'으로 전환하는 함수
+        function setEditTarget(target) {
+            activeEditTarget = target;
+            if (target === 'frame') {
+                zoomTargetLabel.innerText = '🖼️ 프레임';
+                studioFrameImg.style.pointerEvents = 'auto';
+                zoomSlider.min = '0.75';
+                zoomSlider.max = '1.70';
+                zoomSlider.step = '0.02';
+                zoomSlider.value = frameScale.toFixed(2);
+                if (editTargetBtn) editTargetBtn.innerText = '👤 사진 위치수정';
+            } else {
+                zoomTargetLabel.innerText = '👤 내 사진';
+                studioFrameImg.style.pointerEvents = 'none'; // 사진 드래그 방해 안 되게 투과
+                const baseScale = Math.max(BOARD_WIDTH / (studioUserPhoto.naturalWidth || BOARD_WIDTH), BOARD_HEIGHT / (studioUserPhoto.naturalHeight || BOARD_HEIGHT));
+                zoomSlider.min = (baseScale * 0.5).toFixed(2);
+                zoomSlider.max = (baseScale * 2.5).toFixed(2);
+                zoomSlider.step = '0.02';
+                zoomSlider.value = photoScale.toFixed(2);
+                if (editTargetBtn) editTargetBtn.innerText = '🖼️ 프레임 위치수정';
+            }
+        }
+
+        function toggleEditTarget() {
+            setEditTarget(activeEditTarget === 'frame' ? 'photo' : 'frame');
+        }
+
+        // 슬라이더 조작 이벤트 (현재 선택된 대상의 크기 조절)
         zoomSlider.addEventListener('input', (e) => {
-            photoScale = parseFloat(e.target.value);
-            updateUserPhotoTransform();
+            const val = parseFloat(e.target.value);
+            if (activeEditTarget === 'frame') {
+                frameScale = val;
+                updateFrameTransform();
+            } else {
+                photoScale = val;
+                updateUserPhotoTransform();
+            }
         });
 
-        function startPhotoDrag(clientX, clientY) {
-            if (studioUserPhoto.style.display === 'none') return;
-            isPhotoDragging = true;
-            dragStartX = clientX - photoOffsetX;
-            dragStartY = clientY - photoOffsetY;
+        // 드래그 이동 이벤트 (마우스 & 터치 공용)
+        function startPreviewDrag(clientX, clientY) {
+            if (isCountingDown) return;
+            // 촬영 전에는 프레임만 이동 가능, 촬영 후에는 activeEditTarget에 따라 이동
+            if (studioUserPhoto.style.display === 'none' && activeEditTarget !== 'frame') return;
+
+            isPreviewDragging = true;
+            if (activeEditTarget === 'frame') {
+                dragStartX = clientX - frameOffsetX;
+                dragStartY = clientY - frameOffsetY;
+            } else {
+                dragStartX = clientX - photoOffsetX;
+                dragStartY = clientY - photoOffsetY;
+            }
         }
-        function movePhotoDrag(clientX, clientY) {
-            if (!isPhotoDragging) return;
-            photoOffsetX = clientX - dragStartX;
-            photoOffsetY = clientY - dragStartY;
-            updateUserPhotoTransform();
+        function movePreviewDrag(clientX, clientY) {
+            if (!isPreviewDragging) return;
+            if (activeEditTarget === 'frame') {
+                frameOffsetX = clientX - dragStartX;
+                frameOffsetY = clientY - dragStartY;
+                updateFrameTransform();
+            } else {
+                photoOffsetX = clientX - dragStartX;
+                photoOffsetY = clientY - dragStartY;
+                updateUserPhotoTransform();
+            }
         }
-        function endPhotoDrag() {
-            isPhotoDragging = false;
+        function endPreviewDrag() {
+            isPreviewDragging = false;
         }
 
-        previewBox.addEventListener('mousedown', (e) => startPhotoDrag(e.clientX, e.clientY));
-        window.addEventListener('mousemove', (e) => movePhotoDrag(e.clientX, e.clientY));
-        window.addEventListener('mouseup', endPhotoDrag);
+        previewBox.addEventListener('mousedown', (e) => startPreviewDrag(e.clientX, e.clientY));
+        window.addEventListener('mousemove', (e) => movePreviewDrag(e.clientX, e.clientY));
+        window.addEventListener('mouseup', endPreviewDrag);
 
         previewBox.addEventListener('touchstart', (e) => {
-            if (e.touches.length > 0) startPhotoDrag(e.touches[0].clientX, e.touches[0].clientY);
+            if (e.touches.length > 0) startPreviewDrag(e.touches[0].clientX, e.touches[0].clientY);
         });
         previewBox.addEventListener('touchmove', (e) => {
-            if (e.touches.length > 0) movePhotoDrag(e.touches[0].clientX, e.touches[0].clientY);
+            if (e.touches.length > 0) movePreviewDrag(e.touches[0].clientX, e.touches[0].clientY);
         });
-        window.addEventListener('touchend', endPhotoDrag);
+        window.addEventListener('touchend', endPreviewDrag);
 
+        // [기능 3] 사용자가 조절한 프레임 위치·배율 + 사진 위치·배율을 그대로 합성하여 저장
         function downloadPocaImage() {
             const outCanvas = document.createElement('canvas');
-            const scaleFactor = 2; // 고화질 출력 배율
-            const padX = Math.round(BOARD_WIDTH * 0.10 * scaleFactor); // 프레임이 사진보다 좌우 10%씩 더 큼
-            const padY = Math.round(BOARD_HEIGHT * 0.09 * scaleFactor); // 프레임이 사진보다 상하 9%씩 더 큼
+            const scaleFactor = 2;
+            const padX = Math.round(BOARD_WIDTH * 0.15 * scaleFactor);
+            const padY = Math.round(BOARD_HEIGHT * 0.15 * scaleFactor);
 
             const photoAreaW = BOARD_WIDTH * scaleFactor;
             const photoAreaH = BOARD_HEIGHT * scaleFactor;
@@ -1622,7 +1729,23 @@ let isCountingDown = false;
             outCanvas.height = photoAreaH + padY * 2;
             const ctx = outCanvas.getContext('2d');
 
-            // 1. 중앙의 사진 창(330x510 비율) 영역에만 사용자 사진 그리기
+            // 사용자가 조절한 프레임의 최종 좌표 및 크기 계산 (object-fit: contain 비율 반영)
+            const fNaturalRatio = studioFrameImg.naturalWidth / studioFrameImg.naturalHeight;
+            const boxRatio = BOARD_WIDTH / BOARD_HEIGHT;
+            let baseFrameW = BOARD_WIDTH;
+            let baseFrameH = BOARD_HEIGHT;
+            if (fNaturalRatio > boxRatio) {
+                baseFrameH = BOARD_WIDTH / fNaturalRatio;
+            } else {
+                baseFrameW = BOARD_HEIGHT * fNaturalRatio;
+            }
+
+            const finalFrameW = baseFrameW * frameScale * scaleFactor;
+            const finalFrameH = baseFrameH * frameScale * scaleFactor;
+            const finalFrameX = padX + (photoAreaW - finalFrameW) / 2 + (frameOffsetX * scaleFactor);
+            const finalFrameY = padY + (photoAreaH - finalFrameH) / 2 + (frameOffsetY * scaleFactor);
+
+            // 1. 중앙 사진 창 영역에 사용자 사진 그리기
             ctx.save();
             ctx.beginPath();
             ctx.roundRect(padX, padY, photoAreaW, photoAreaH, 14 * scaleFactor);
@@ -1638,15 +1761,16 @@ let isCountingDown = false;
             ctx.drawImage(studioUserPhoto, drawX, drawY, drawW, drawH);
             ctx.restore();
 
-            // 2. 동적 마스크로 프레임 외곽선 바깥으로 삐져나온 모서리 자르기
+            // 2. 조절된 프레임 위치·크기에 맞춰 동적 마스크 적용
             if (dynamicMaskCanvas) {
                 ctx.globalCompositeOperation = 'destination-in';
-                ctx.drawImage(dynamicMaskCanvas, 0, 0, outCanvas.width, outCanvas.height);
+                ctx.drawImage(dynamicMaskCanvas, finalFrameX, finalFrameY, finalFrameW, finalFrameH);
                 ctx.globalCompositeOperation = 'source-over';
             }
 
-            // 3. 사진 영역보다 훨씬 큰 포카 프레임 이미지를 전체 캔버스에 덮어씌우기
-            ctx.drawImage(studioFrameImg, 0, 0, outCanvas.width, outCanvas.height);
+            // 3. 조절된 프레임 위치·크기 그대로 최상단에 덮어씌우기
+            ctx.drawImage(studioFrameImg, finalFrameX, finalFrameY, finalFrameW, finalFrameH);
+
             try {
                 const link = document.createElement('a');
                 link.download = `my_photocard_${Date.now()}.png`;
